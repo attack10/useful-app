@@ -2,16 +2,36 @@
 'use client';
 
 import { useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { createMealPlan } from '@/app/actions/mealPlan';
 
 const QUICK_INGREDIENTS = ['キャベツ', '玉ねぎ', '豚肉', '鶏肉', '卵', '豆腐', '人参'];
+
+function SubmitButton({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending || disabled}
+      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md disabled:bg-slate-300 disabled:cursor-not-allowed transition flex justify-center items-center gap-2"
+    >
+      {pending ? (
+        <>
+          <span className="animate-spin">🌀</span> 献立を生成中...
+        </>
+      ) : (
+        'AIで献立を生成する'
+      )}
+    </button>
+  );
+}
 
 export default function HomePage() {
   const [ingredients, setIngredients] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [servings, setServings] = useState(2);
   const [days, setDays] = useState(3);
-  const [isPending, setIsPending] = useState(false);
 
   const addIngredient = (item: string) => {
     const trimmed = item.trim();
@@ -44,13 +64,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <form
-          action={async (formData) => {
-            setIsPending(true);
-            await createMealPlan(formData);
-          }}
-          className="space-y-6"
-        >
+        <form action={createMealPlan} className="space-y-6">
           {/* 食材入力フォーム */}
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">
@@ -157,19 +171,7 @@ export default function HomePage() {
           </div>
 
           {/* 送信ボタン */}
-          <button
-            type="submit"
-            disabled={isPending || ingredients.length === 0}
-            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md disabled:bg-slate-300 disabled:cursor-not-allowed transition flex justify-center items-center gap-2"
-          >
-            {isPending ? (
-              <>
-                <span className="animate-spin">🌀</span> 献立を生成中...
-              </>
-            ) : (
-              'AIで献立を生成する'
-            )}
-          </button>
+          <SubmitButton disabled={ingredients.length === 0} />
         </form>
       </div>
     </main>
