@@ -82,7 +82,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* <div className="text-center">
+        <div className="text-center">
           <button
             type="button"
             onClick={() => {
@@ -95,7 +95,7 @@ export default function LoginPage() {
               ? 'すでにアカウントをお持ちですか？ ログイン'
               : 'アカウントをお持ちでないですか？ 新規登録'}
           </button>
-        </div> */}
+        </div>
 
       </div>
     </div>

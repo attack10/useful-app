@@ -29,7 +29,38 @@ model User {
   email String  @unique
   name  String?
   createdAt DateTime  @default(now()) @map("created_at")
+  mealPlans MealPlan[]
 
   @@map("users")
 }
 
+// 1回の生成リクエスト（例: 3日分・2人前）
+model MealPlan {
+  id            String          @id @default(uuid())
+  userId        String?
+  user          User?           @relation(fields: [userId], references: [id])
+  servings      Int             // 作る人数
+  days          Int             // 作る日数
+  inputIngredients String[]     // ユーザーが入力した食材
+  totalIngredients Json?    @map("total_ingredients")
+  created_at    DateTime        @default(now())
+  
+  dailyMeals    DailyMeal[]     // 日ごとの献立
+
+  @@map("meal_plans")
+}
+
+// 各日の献立データ
+model DailyMeal {
+  id            String          @id @default(uuid())
+  mealPlanId    String
+  mealPlan      MealPlan        @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  dayNumber     Int             // 1日目, 2日目...
+  title         String          // 料理名（例: 豚肉とキャベツの味噌炒め）
+  description   String?         // 簡単な特徴・アピールポイント
+  cookingTimeMinutes Int?       // 調理時間
+  ingredients   Json            // 使用食材（[{name: "豚肉", amount: "200g", isInputItem: true}]）
+  steps         String[]        // 調理手順
+  advice        String?         // コツ・保存方法・余った場合の応用
+  
+}

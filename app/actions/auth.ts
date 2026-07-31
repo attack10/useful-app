@@ -65,7 +65,7 @@ export async function signIn(formData: FormData) {
   }
 
   revalidatePath('/', 'layout');
-  redirect('/shopping');
+  redirect('/');
 }
 
 // ログアウト
