@@ -5,6 +5,7 @@ import {
   getShoppingItems,
   addShoppingItem,
   updateItemCounts,
+  updateShoppingItem,
   deleteShoppingItem,
 } from '@/app/actions/shopping';
 import { signOut } from '@/app/actions/auth';
@@ -35,7 +36,36 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
   const [requiredCount, setRequiredCount] = useState(1);
   const [currentCount, setCurrentCount] = useState(1);
   const [amazonUrl, setAmazonUrl] = useState('');
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setName('');
+    setRequiredCount(1);
+    setCurrentCount(1);
+    setAmazonUrl('');
+    setEditingItemId(null);
+  };
+
+  const showFeedback = (message: string) => {
+    setFeedbackMessage(message);
+    window.setTimeout(() => setFeedbackMessage(null), 2000);
+  };
+
+  const openCreateForm = () => {
+    resetForm();
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (item: ShoppingItem) => {
+    setEditingItemId(item.id);
+    setName(item.name);
+    setRequiredCount(item.requiredCount);
+    setCurrentCount(item.currentCount);
+    setAmazonUrl(item.amazonUrl ?? '');
+    setIsFormOpen(true);
+  };
 
   const loadItems = async () => {
     setIsProcessing(true);
@@ -50,19 +80,26 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
 
     setIsProcessing(true);
     try {
-      await addShoppingItem({
-        name: name.trim(),
-        requiredCount: Number(requiredCount),
-        currentCount: Number(currentCount),
-        amazonUrl: amazonUrl.trim() || undefined,
-      });
+      if (editingItemId) {
+        await updateShoppingItem(editingItemId, {
+          name: name.trim(),
+          requiredCount: Number(requiredCount),
+          currentCount: Number(currentCount),
+          amazonUrl: amazonUrl.trim() || undefined,
+        });
+      } else {
+        await addShoppingItem({
+          name: name.trim(),
+          requiredCount: Number(requiredCount),
+          currentCount: Number(currentCount),
+          amazonUrl: amazonUrl.trim() || undefined,
+        });
+      }
 
-      setName('');
-      setRequiredCount(1);
-      setCurrentCount(1);
-      setAmazonUrl('');
+      resetForm();
       setIsFormOpen(false);
       await loadItems();
+      showFeedback(editingItemId ? '更新しました' : '追加しました');
     } finally {
       setIsProcessing(false);
     }
@@ -132,6 +169,12 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
       </header>
 
       <main className="max-w-md mx-auto px-4 py-4 space-y-3">
+        {feedbackMessage && (
+          <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">
+            {feedbackMessage}
+          </div>
+        )}
+
         {isProcessing && items.length === 0 ? (
           <div className="text-center py-16 text-slate-400 font-medium">
             データを読み込み中...
@@ -168,16 +211,26 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
                     )}
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteItem(item.id)}
-                    className="p-1.5 text-slate-300 hover:text-red-500 active:text-red-600 transition-colors"
-                    aria-label="削除"
-                    disabled={isProcessing}
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(item)}
+                      className="px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 rounded-full"
+                      disabled={isProcessing}
+                    >
+                      編集
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="p-1.5 text-slate-300 hover:text-red-500 active:text-red-600 transition-colors"
+                      aria-label="削除"
+                      disabled={isProcessing}
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100/80 mt-2">
@@ -229,7 +282,7 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
 
       <div className="fixed bottom-6 right-5 z-30">
         <button
-          onClick={() => setIsFormOpen((prev) => !prev)}
+          onClick={() => (isFormOpen ? (resetForm(), setIsFormOpen(false)) : openCreateForm())}
           className="w-14 h-14 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-full shadow-lg flex items-center justify-center text-2xl font-light transition-transform active:scale-95"
           aria-label="追加"
           disabled={isProcessing}
@@ -245,10 +298,15 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
             style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
           >
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-800 text-base">新しい商品を登録</h3>
+              <h3 className="font-bold text-slate-800 text-base">
+                {editingItemId ? '商品を編集' : '新しい商品を登録'}
+              </h3>
               <button
                 type="button"
-                onClick={() => setIsFormOpen(false)}
+                onClick={() => {
+                  resetForm();
+                  setIsFormOpen(false);
+                }}
                 className="text-slate-400 hover:text-slate-600 text-sm font-medium"
               >
                 キャンセル
@@ -307,7 +365,7 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
                 className="w-full h-12 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold rounded-xl text-base shadow-md transition-colors mt-2"
                 disabled={isProcessing}
               >
-                リストに追加する
+                {editingItemId ? '更新する' : 'リストに追加する'}
               </button>
             </form>
           </div>
