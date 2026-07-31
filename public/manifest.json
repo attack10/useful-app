@@ -1,0 +1,21 @@
+{
+  "name": "家族の生活ポータル",
+  "short_name": "生活ポータル",
+  "description": "家族向け買い物＆在庫管理アプリ",
+  "start_url": "/shopping",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
