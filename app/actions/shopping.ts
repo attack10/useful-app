@@ -64,7 +64,32 @@ export async function updateItemCounts(
   revalidatePath('/shopping');
 }
 
-// 4. 削除
+// 4. 商品情報の更新
+export async function updateShoppingItem(
+  id: string,
+  data: {
+    name: string;
+    requiredCount: number;
+    currentCount: number;
+    amazonUrl?: string;
+  }
+) {
+  await checkAuth();
+
+  await prisma.shoppingItem.update({
+    where: { id },
+    data: {
+      name: data.name,
+      requiredCount: data.requiredCount,
+      currentCount: data.currentCount,
+      amazonUrl: data.amazonUrl ?? null,
+    },
+  });
+
+  revalidatePath('/shopping');
+}
+
+// 5. 削除
 export async function deleteShoppingItem(id: string) {
   await checkAuth();
 
