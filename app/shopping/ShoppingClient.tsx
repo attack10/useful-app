@@ -39,6 +39,7 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const resetForm = () => {
     setName('');
@@ -126,15 +127,27 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
     }
   };
 
-  const handleDeleteItem = async (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  const confirmDelete = (id: string) => {
+    setDeleteTargetId(id);
+  };
+
+  const cancelDelete = () => {
+    setDeleteTargetId(null);
+  };
+
+  const handleDeleteItem = async () => {
+    if (!deleteTargetId) return;
+
+    setItems((prev) => prev.filter((item) => item.id !== deleteTargetId));
 
     setIsProcessing(true);
     try {
-      await deleteShoppingItem(id);
+      await deleteShoppingItem(deleteTargetId);
       await loadItems();
+      showFeedback('削除しました');
     } finally {
       setIsProcessing(false);
+      setDeleteTargetId(null);
     }
   };
 
@@ -172,6 +185,29 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
         {feedbackMessage && (
           <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">
             {feedbackMessage}
+          </div>
+        )}
+
+        {deleteTargetId && (
+          <div className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-slate-800">本当に削除しますか？</p>
+            <p className="mt-1 text-xs text-slate-500">削除すると、商品情報は元に戻せません。</p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteItem}
+                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white"
+              >
+                削除する
+              </button>
+            </div>
           </div>
         )}
 
@@ -221,7 +257,7 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
                       編集
                     </button>
                     <button
-                      onClick={() => handleDeleteItem(item.id)}
+                      onClick={() => confirmDelete(item.id)}
                       className="p-1.5 text-slate-300 hover:text-red-500 active:text-red-600 transition-colors"
                       aria-label="削除"
                       disabled={isProcessing}
