@@ -8,7 +8,6 @@ import {
   updateShoppingItem,
   deleteShoppingItem,
 } from '@/app/actions/shopping';
-import { signOut } from '@/app/actions/auth';
 
 type ShoppingItem = {
   id: string;
@@ -18,18 +17,11 @@ type ShoppingItem = {
   amazonUrl: string | null;
 };
 
-type User = {
-  id: string;
-  name: string | null;
-  email: string | null;
-};
-
 type ShoppingClientProps = {
-  user: User;
   initialItems: ShoppingItem[];
 };
 
-export default function ShoppingClient({ user, initialItems }: ShoppingClientProps) {
+export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
   const [items, setItems] = useState<ShoppingItem[]>(initialItems);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [name, setName] = useState('');
@@ -155,19 +147,6 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
 
   return (
     <div className="min-h-screen bg-slate-100 pb-32 pt-safe">
-      <header className="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center max-w-lg mx-auto">
-        <span className="text-xs font-bold text-slate-600">
-          👤 {user.name || user.email} でログイン中
-        </span>
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="text-xs text-red-600 hover:underline font-bold"
-          >
-            ログアウト
-          </button>
-        </form>
-      </header>
 
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 pt-4 shadow-sm">
         <div className="max-w-md mx-auto flex items-center justify-between">

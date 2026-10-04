@@ -12,5 +12,5 @@ export default async function ShoppingPage() {
 
   const initialItems = await getShoppingItems();
 
-  return <ShoppingClient user={user} initialItems={initialItems} />;
+  return <ShoppingClient initialItems={initialItems} />;
 }

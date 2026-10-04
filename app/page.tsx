@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getCurrentUser, signOut } from '@/app/actions/auth';
 
 const featureCards = [
   {
@@ -21,10 +22,35 @@ const featureCards = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const user = await getCurrentUser();
+
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-800 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-800 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+        {user && (
+          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-sm">
+                👤
+              </span>
+              <div className="text-xs sm:text-sm">
+                <span className="font-bold text-slate-800">
+                  {user.name || user.email}
+                </span>
+                <span className="text-slate-500 ml-1.5 hidden sm:inline">でログイン中</span>
+              </div>
+            </div>
+            <form action={signOut}>
+              <button
+                type="submit"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 hover:border-rose-200 active:scale-95"
+              >
+                ログアウト
+              </button>
+            </form>
+          </div>
+        )}
         <section className="rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm sm:p-10 lg:p-12">
           <div className="max-w-2xl space-y-5">
             <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
