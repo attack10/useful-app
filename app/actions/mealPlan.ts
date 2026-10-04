@@ -3,9 +3,10 @@
 
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { generateMealPlanWithGemini } from '@/lib/gemini';
+import { Prisma } from '@prisma/client';
+import { createClient } from '@/lib/supabase/server';
+import { generateMealPlanWithGemini, regenerateSingleMealWithGemini } from '@/lib/gemini';
 import { summarizeIngredients } from '@/lib/geminiSummary';
-import { regenerateSingleMealWithGemini } from '@/lib/gemini';
 import { revalidatePath } from 'next/cache';
 
 export async function createMealPlan(formData: FormData) {
@@ -32,13 +33,20 @@ export async function createMealPlan(formData: FormData) {
   const allDailyIngredients = generatedMeals.map((m) => m.ingredients);
   const totalIngredients = await summarizeIngredients(allDailyIngredients);
 
+  // ログインユーザーの取得（存在すれば紐付け）
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   // 3. レシピと集計結果をまとめてDBへ一括保存
   const mealPlan = await prisma.mealPlan.create({
     data: {
+      userId: user?.id || null,
       servings,
       days,
       inputIngredients: ingredients,
-      totalIngredients: totalIngredients as any, // 👈 集計結果を保存！
+      totalIngredients: totalIngredients as unknown as Prisma.InputJsonValue,
       dailyMeals: {
         create: generatedMeals,
       },
@@ -101,14 +109,19 @@ export async function regenerateMealAction(
 
   if (latestMealPlan) {
     const allIngredients = latestMealPlan.dailyMeals.map(
-      (m) => m.ingredients as any[]
+      (m) =>
+        m.ingredients as unknown as Array<{
+          name: string;
+          amount: string;
+          isInputItem: boolean;
+        }>
     );
     const newTotalIngredients = await summarizeIngredients(allIngredients);
 
     await prisma.mealPlan.update({
       where: { id: mealPlanId },
       data: {
-        totalIngredients: newTotalIngredients as any,
+        totalIngredients: newTotalIngredients as unknown as Prisma.InputJsonValue,
       },
     });
   }

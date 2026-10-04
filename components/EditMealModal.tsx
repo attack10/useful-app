@@ -31,6 +31,7 @@ export default function EditMealModal({
         setIsOpen(false);
         setRequestText('');
       } catch (error) {
+        console.error('Failed to regenerate meal:', error);
         alert('料理の修正に失敗しました。もう一度お試しください。');
       }
     });

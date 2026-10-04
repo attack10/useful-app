@@ -1,6 +1,5 @@
 // lib/gemini.ts
 import { GoogleGenAI, Type } from '@google/genai';
-import { summarizeIngredients } from './geminiSummary';
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY!,

@@ -30,6 +30,8 @@ model User {
   name  String?
   createdAt DateTime  @default(now()) @map("created_at")
   mealPlans MealPlan[]
+  assignedTasks Task[]          @relation("AssignedTasks")
+  createdTasks  Task[]          @relation("CreatedTasks")
 
   @@map("users")
 }
@@ -63,4 +65,35 @@ model DailyMeal {
   steps         String[]        // 調理手順
   advice        String?         // コツ・保存方法・余った場合の応用
   
+}
+
+// 1. 家事タスク（家族全員で共有）
+model Task {
+  id          String    @id @default(uuid())
+  title       String    // 例: "可燃ごみ出し", "お風呂掃除"
+  category    String    // "cleaning", "trash", "laundry", "other"
+  status      String    @default("todo") // "todo", "done"
+  
+  // 担当者・作成者（誰のタスクか判別したい場合のみ使用）
+  assigneeId  String?
+  assignee    User?     @relation("AssignedTasks", fields: [assigneeId], references: [id])
+  createdById String?
+  createdBy   User?     @relation("CreatedTasks", fields: [createdById], references: [id])
+
+  dueDate     DateTime? // 期限日
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("tasks")
+}
+
+// 2. 日用品ストック・買出しリスト（家族全員で共有）
+model InventoryItem {
+  id        String   @id @default(uuid())
+  name      String   // 例: "トイレットペーパー", "食器用洗剤"
+  status    String   @default("ok") // "ok" (在庫あり), "low" (そろそろ), "empty" (買い出し必要)
+  category  String   // "sanitary", "kitchen", "daily"
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("inventory_items")
 }

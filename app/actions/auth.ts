@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { debug } from 'console';
 
 // 新規会員登録
 export async function signUp(formData: FormData) {
@@ -21,8 +20,6 @@ export async function signUp(formData: FormData) {
     password,
   });
 
-  console.log(email)
-  console.log(password)
 
   if (error || !data.user) {
     return { error: error?.message || '登録に失敗しました' };
@@ -57,8 +54,6 @@ export async function signIn(formData: FormData) {
     password,
   });
 
-  console.log(email)
-  console.log(password)
 
   if (error) {
     return { error: 'メールアドレスまたはパスワードが正しくありません' };

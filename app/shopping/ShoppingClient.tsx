@@ -316,7 +316,7 @@ export default function ShoppingClient({ user, initialItems }: ShoppingClientPro
         )}
       </main>
 
-      <div className="fixed bottom-6 right-5 z-30">
+      <div className="fixed bottom-20 sm:bottom-6 right-5 z-30">
         <button
           onClick={() => (isFormOpen ? (resetForm(), setIsFormOpen(false)) : openCreateForm())}
           className="w-14 h-14 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-full shadow-lg flex items-center justify-center text-2xl font-light transition-transform active:scale-95"
