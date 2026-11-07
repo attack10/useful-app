@@ -64,6 +64,46 @@ const saveOrder = (ids: string[]) => {
   }
 };
 
+const DENSITY_STORAGE_KEY = 'shopping_view_density';
+
+let densityListeners: Array<() => void> = [];
+function emitDensityChange() {
+  for (const listener of densityListeners) {
+    listener();
+  }
+}
+
+const densityStore = {
+  subscribe: (listener: () => void) => {
+    densityListeners.push(listener);
+    window.addEventListener('storage', listener);
+    return () => {
+      densityListeners = densityListeners.filter((l) => l !== listener);
+      window.removeEventListener('storage', listener);
+    };
+  },
+  getSnapshot: (): 'comfortable' | 'compact' => {
+    try {
+      return localStorage.getItem(DENSITY_STORAGE_KEY) === 'compact'
+        ? 'compact'
+        : 'comfortable';
+    } catch {
+      return 'comfortable';
+    }
+  },
+  getServerSnapshot: (): 'comfortable' | 'compact' => 'comfortable',
+};
+
+const setSavedDensity = (newDensity: 'comfortable' | 'compact') => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(DENSITY_STORAGE_KEY, newDensity);
+    emitDensityChange();
+  } catch (err) {
+    console.error('Failed to save density preference:', err);
+  }
+};
+
 type ShoppingClientProps = {
   initialItems: ShoppingItem[];
 };
@@ -241,6 +281,22 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
     showFeedback('並び順を変更しました。');
   };
 
+  const density = useSyncExternalStore(
+    densityStore.subscribe,
+    densityStore.getSnapshot,
+    densityStore.getServerSnapshot
+  );
+
+  const handleToggleDensity = (newDensity: 'comfortable' | 'compact') => {
+    if (newDensity === density) return;
+    setSavedDensity(newDensity);
+    showFeedback(
+      newDensity === 'compact'
+        ? 'コンパクト表示に切り替えました。'
+        : '標準表示に切り替えました。'
+    );
+  };
+
   const resetForm = () => {
     setName('');
     setRequiredCount(1);
@@ -363,9 +419,114 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
   const itemCount = displayItems.length;
   const draggedItem = draggingIndex !== null ? displayItems[draggingIndex] : null;
 
+  const DragHandle = ({ index, isCompact }: { index: number; isCompact?: boolean }) => (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(index));
+        draggingIndexRef.current = index;
+        setDraggingIndex(index);
+        const card = (e.currentTarget as HTMLElement).closest<HTMLElement>(
+          '[data-item-card]'
+        );
+        if (card && e.dataTransfer.setDragImage) {
+          e.dataTransfer.setDragImage(card, 20, 20);
+        }
+      }}
+      onDragEnd={() => {
+        stopAutoScroll();
+        draggingIndexRef.current = null;
+        dragOverIndexRef.current = null;
+        setDraggingIndex(null);
+        setDragOverIndex(null);
+      }}
+      onTouchStart={() => {
+        draggingIndexRef.current = index;
+        dragOverIndexRef.current = index;
+        setDraggingIndex(index);
+        setDragOverIndex(index);
+      }}
+      onTouchMove={(e) => {
+        if (draggingIndexRef.current === null) return;
+        const touch = e.touches[0];
+        updateAutoScroll(touch.clientX, touch.clientY);
+
+        const element = document.elementFromPoint(
+          touch.clientX,
+          touch.clientY
+        );
+        const cardElement = element?.closest<HTMLElement>(
+          '[data-item-index]'
+        );
+        if (cardElement) {
+          const targetIndex = Number(
+            cardElement.getAttribute('data-item-index')
+          );
+          if (
+            !isNaN(targetIndex) &&
+            targetIndex !== dragOverIndexRef.current
+          ) {
+            dragOverIndexRef.current = targetIndex;
+            setDragOverIndex(targetIndex);
+          }
+        }
+      }}
+      onTouchEnd={() => {
+        stopAutoScroll();
+        const from = draggingIndexRef.current;
+        const to = dragOverIndexRef.current;
+        if (from !== null && to !== null && from !== to) {
+          reorderItems(from, to);
+        }
+        draggingIndexRef.current = null;
+        dragOverIndexRef.current = null;
+        setDraggingIndex(null);
+        setDragOverIndex(null);
+      }}
+      onTouchCancel={() => {
+        stopAutoScroll();
+        draggingIndexRef.current = null;
+        dragOverIndexRef.current = null;
+        setDraggingIndex(null);
+        setDragOverIndex(null);
+      }}
+      className={`touch-none cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 active:text-blue-600 rounded-lg hover:bg-slate-100 transition-colors shrink-0 select-none ${
+        isCompact ? 'p-1.5 -ml-1' : 'p-2 -ml-2 -mt-1'
+      }`}
+      title="長押し/ドラッグして並び替え"
+      aria-label="長押し/ドラッグして並び替え"
+    >
+      <GripVertical className={isCompact ? 'w-4 h-4' : 'w-5 h-5'} />
+    </div>
+  );
+
   const renderPlaceholder = (placeholderItem: ShoppingItem) => {
     const isTargetShortage = placeholderItem.currentCount < placeholderItem.requiredCount;
     const shortageDiff = placeholderItem.requiredCount - placeholderItem.currentCount;
+
+    if (density === 'compact') {
+      return (
+        <div className="my-1 px-3 py-2.5 rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/70 opacity-75 shadow-2xs pointer-events-none transition-all flex items-center justify-between gap-2 animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="p-1.5 -ml-1 text-blue-400 shrink-0">
+              <GripVertical className="w-4 h-4" />
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+              <h2 className="font-bold text-blue-900 text-sm leading-snug truncate max-w-[140px] sm:max-w-[200px]">
+                {placeholderItem.name}
+              </h2>
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full shrink-0">
+                移動先
+              </span>
+            </div>
+          </div>
+          <div className="text-xs text-blue-700/80 font-bold shrink-0">
+            {placeholderItem.currentCount} / {placeholderItem.requiredCount}
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="my-2 p-4 rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/70 opacity-75 shadow-sm pointer-events-none transition-all animate-in fade-in zoom-in-95 duration-150">
@@ -410,18 +571,49 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
     <div className="min-h-screen bg-slate-100 pb-32 pt-safe">
 
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 pt-4 shadow-sm">
-        <div className="max-w-md mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🛒</span>
-            <h1 className="text-lg font-bold text-slate-800">買い物＆在庫リスト</h1>
+        <div className="max-w-md mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-2xl shrink-0">🛒</span>
+            <h1 className="text-lg font-bold text-slate-800 truncate">買い物＆在庫</h1>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-600 rounded-full border border-blue-200">
-            全 {itemCount} 件
-          </span>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 表示密度切り替え */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+              <button
+                type="button"
+                onClick={() => handleToggleDensity('comfortable')}
+                className={`px-2 py-1 rounded-md font-semibold transition-all ${
+                  density === 'comfortable'
+                    ? 'bg-white text-blue-600 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="標準表示（詳細）"
+              >
+                標準
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleDensity('compact')}
+                className={`px-2 py-1 rounded-md font-semibold transition-all ${
+                  density === 'compact'
+                    ? 'bg-white text-blue-600 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="コンパクト表示（たくさん表示）"
+              >
+                コンパクト
+              </button>
+            </div>
+
+            <span className="text-xs font-semibold px-2 py-1 bg-blue-50 text-blue-600 rounded-full border border-blue-200">
+              {itemCount}件
+            </span>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-md mx-auto px-4 py-4 space-y-3">
+      <main className={`max-w-md mx-auto px-4 py-4 ${density === 'compact' ? 'space-y-2' : 'space-y-3'}`}>
         {deleteTargetId && (
           <div className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-slate-800">本当に削除しますか？</p>
@@ -503,155 +695,54 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
               >
                 {isDropBefore && draggedItem && renderPlaceholder(draggedItem)}
 
-                <div
-                  className={`p-4 rounded-2xl border transition-all ${
-                    isDragging
-                      ? 'opacity-30 border-dashed border-blue-300 bg-blue-50/20 scale-[0.98]'
-                      : isShortage
-                      ? 'bg-red-50/90 border-red-300 shadow-sm'
-                      : 'bg-white border-slate-200/80 shadow-sm'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-start gap-2 flex-1 min-w-0">
-                      <div
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', String(index));
-                          draggingIndexRef.current = index;
-                          setDraggingIndex(index);
-                          const card = (e.currentTarget as HTMLElement).closest<HTMLElement>(
-                            '[data-item-card]'
-                          );
-                          if (card && e.dataTransfer.setDragImage) {
-                            e.dataTransfer.setDragImage(card, 20, 20);
-                          }
-                        }}
-                        onDragEnd={() => {
-                          stopAutoScroll();
-                          draggingIndexRef.current = null;
-                          dragOverIndexRef.current = null;
-                          setDraggingIndex(null);
-                          setDragOverIndex(null);
-                        }}
-                        onTouchStart={() => {
-                          draggingIndexRef.current = index;
-                          dragOverIndexRef.current = index;
-                          setDraggingIndex(index);
-                          setDragOverIndex(index);
-                        }}
-                        onTouchMove={(e) => {
-                          if (draggingIndexRef.current === null) return;
-                          const touch = e.touches[0];
-                          updateAutoScroll(touch.clientX, touch.clientY);
+                {density === 'compact' ? (
+                  <div
+                    className={`px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                      isDragging
+                        ? 'opacity-30 border-dashed border-blue-300 bg-blue-50/20 scale-[0.98]'
+                        : isShortage
+                        ? 'bg-red-50/90 border-red-300 shadow-2xs'
+                        : 'bg-white border-slate-200/80 shadow-2xs'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <DragHandle index={index} isCompact />
 
-                          const element = document.elementFromPoint(
-                            touch.clientX,
-                            touch.clientY
-                          );
-                          const cardElement = element?.closest<HTMLElement>(
-                            '[data-item-index]'
-                          );
-                          if (cardElement) {
-                            const targetIndex = Number(
-                              cardElement.getAttribute('data-item-index')
-                            );
-                            if (
-                              !isNaN(targetIndex) &&
-                              targetIndex !== dragOverIndexRef.current
-                            ) {
-                              dragOverIndexRef.current = targetIndex;
-                              setDragOverIndex(targetIndex);
-                            }
-                          }
-                        }}
-                        onTouchEnd={() => {
-                          stopAutoScroll();
-                          const from = draggingIndexRef.current;
-                          const to = dragOverIndexRef.current;
-                          if (from !== null && to !== null && from !== to) {
-                            reorderItems(from, to);
-                          }
-                          draggingIndexRef.current = null;
-                          dragOverIndexRef.current = null;
-                          setDraggingIndex(null);
-                          setDragOverIndex(null);
-                        }}
-                        onTouchCancel={() => {
-                          stopAutoScroll();
-                          draggingIndexRef.current = null;
-                          dragOverIndexRef.current = null;
-                          setDraggingIndex(null);
-                          setDragOverIndex(null);
-                        }}
-                        className="touch-none cursor-grab active:cursor-grabbing p-2 -ml-2 -mt-1 text-slate-400 hover:text-slate-600 active:text-blue-600 rounded-lg hover:bg-slate-100 transition-colors shrink-0 select-none"
-                        title="長押し/ドラッグして並び替え"
-                        aria-label="長押し/ドラッグして並び替え"
-                      >
-                        <GripVertical className="w-5 h-5" />
-                      </div>
-
-                      <div className="space-y-1 min-w-0 flex-1 pt-0.5">
-                        <h2 className="font-bold text-slate-900 text-base leading-snug break-words">
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+                        <h2 className="font-bold text-slate-900 text-sm leading-snug truncate max-w-[130px] sm:max-w-[200px]">
                           {item.name}
                         </h2>
                         {isShortage && (
-                          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white shadow-xs">
-                            <span>⚠️ 要買い足し (あと {shortageDiff} 個)</span>
-                          </div>
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white shrink-0">
+                            あと{shortageDiff}個
+                          </span>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => openEditForm(item)}
-                        className="px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
-                        disabled={isProcessing}
-                      >
-                        編集
-                      </button>
-                      <button
-                        onClick={() => confirmDelete(item.id)}
-                        className="p-1.5 text-slate-300 hover:text-red-500 active:text-red-600 transition-colors"
-                        aria-label="削除"
-                        disabled={isProcessing}
-                      >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="text-xs text-slate-500 mr-0.5 text-right">
+                        <span className="text-sm font-extrabold text-slate-900">{item.currentCount}</span>
+                        <span className="text-slate-400 text-[10px]">/{item.requiredCount}</span>
+                      </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-100/80 mt-2">
-                    <div className="text-xs text-slate-500">
-                      現在: <span className="text-lg font-extrabold text-slate-900 mx-0.5">{item.currentCount}</span>
-                      <span className="text-slate-400">/ 最低 {item.requiredCount}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
                       {item.amazonUrl && (
                         <a
                           href={item.amazonUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="h-10 px-3 bg-amber-400 hover:bg-amber-500 active:bg-amber-600 text-amber-950 font-bold text-xs rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+                          className="w-7 h-7 bg-amber-400 hover:bg-amber-500 active:bg-amber-600 text-amber-950 font-bold text-xs rounded-lg flex items-center justify-center shadow-2xs transition-colors"
+                          title="Amazonで開く"
                         >
-                          <span>📦 Amazon</span>
-                          <svg className="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
+                          <span>📦</span>
                         </a>
                       )}
 
-                      <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1">
+                      <div className="flex items-center bg-slate-100 p-0.5 rounded-lg gap-0.5">
                         <button
                           type="button"
                           onClick={() => handleUpdateCount(item.id, -1)}
-                          className="w-10 h-10 bg-white active:bg-slate-200 rounded-lg shadow-xs flex items-center justify-center text-slate-800 font-bold text-lg transition-colors"
+                          className="w-7 h-7 bg-white active:bg-slate-200 rounded-md shadow-2xs flex items-center justify-center text-slate-800 font-bold text-sm transition-colors"
                           disabled={isProcessing}
                         >
                           -
@@ -659,15 +750,124 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
                         <button
                           type="button"
                           onClick={() => handleUpdateCount(item.id, 1)}
-                          className="w-10 h-10 bg-blue-600 active:bg-blue-700 text-white rounded-lg shadow-xs flex items-center justify-center font-bold text-lg transition-colors"
+                          className="w-7 h-7 bg-blue-600 active:bg-blue-700 text-white rounded-md shadow-2xs flex items-center justify-center font-bold text-sm transition-colors"
                           disabled={isProcessing}
                         >
                           +
                         </button>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => openEditForm(item)}
+                        className="px-2 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                        disabled={isProcessing}
+                      >
+                        編集
+                      </button>
+                      <button
+                        onClick={() => confirmDelete(item.id)}
+                        className="p-1 text-slate-300 hover:text-red-500 active:text-red-600 transition-colors"
+                        aria-label="削除"
+                        disabled={isProcessing}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    className={`p-4 rounded-2xl border transition-all ${
+                      isDragging
+                        ? 'opacity-30 border-dashed border-blue-300 bg-blue-50/20 scale-[0.98]'
+                        : isShortage
+                        ? 'bg-red-50/90 border-red-300 shadow-sm'
+                        : 'bg-white border-slate-200/80 shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <DragHandle index={index} />
+
+                        <div className="space-y-1 min-w-0 flex-1 pt-0.5">
+                          <h2 className="font-bold text-slate-900 text-base leading-snug break-words">
+                            {item.name}
+                          </h2>
+                          {isShortage && (
+                            <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white shadow-xs">
+                              <span>⚠️ 要買い足し (あと {shortageDiff} 個)</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEditForm(item)}
+                          className="px-2.5 py-1 text-xs font-semibold text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
+                          disabled={isProcessing}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => confirmDelete(item.id)}
+                          className="p-1.5 text-slate-300 hover:text-red-500 active:text-red-600 transition-colors"
+                          aria-label="削除"
+                          disabled={isProcessing}
+                        >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100/80 mt-2">
+                      <div className="text-xs text-slate-500">
+                        現在: <span className="text-lg font-extrabold text-slate-900 mx-0.5">{item.currentCount}</span>
+                        <span className="text-slate-400">/ 最低 {item.requiredCount}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {item.amazonUrl && (
+                          <a
+                            href={item.amazonUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-10 px-3 bg-amber-400 hover:bg-amber-500 active:bg-amber-600 text-amber-950 font-bold text-xs rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+                          >
+                            <span>📦 Amazon</span>
+                            <svg className="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        )}
+
+                        <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateCount(item.id, -1)}
+                            className="w-10 h-10 bg-white active:bg-slate-200 rounded-lg shadow-xs flex items-center justify-center text-slate-800 font-bold text-lg transition-colors"
+                            disabled={isProcessing}
+                          >
+                            -
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateCount(item.id, 1)}
+                            className="w-10 h-10 bg-blue-600 active:bg-blue-700 text-white rounded-lg shadow-xs flex items-center justify-center font-bold text-lg transition-colors"
+                            disabled={isProcessing}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {isDropAfter && draggedItem && renderPlaceholder(draggedItem)}
               </div>
