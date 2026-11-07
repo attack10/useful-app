@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { GripVertical } from 'lucide-react';
 import {
   getShoppingItems,
@@ -85,6 +85,108 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const draggingIndexRef = useRef<number | null>(null);
   const dragOverIndexRef = useRef<number | null>(null);
+
+  // 画面端ドラッグ時の自動スクロール管理
+  const autoScrollRef = useRef<{
+    animationFrameId: number | null;
+    clientY: number | null;
+    clientX: number | null;
+  }>({
+    animationFrameId: null,
+    clientY: null,
+    clientX: null,
+  });
+
+  const autoScrollLoopRef = useRef<() => void>(() => {});
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollRef.current.animationFrameId !== null) {
+      cancelAnimationFrame(autoScrollRef.current.animationFrameId);
+      autoScrollRef.current.animationFrameId = null;
+    }
+    autoScrollRef.current.clientY = null;
+    autoScrollRef.current.clientX = null;
+  }, []);
+
+  useEffect(() => {
+    autoScrollLoopRef.current = () => {
+      const { clientY, clientX } = autoScrollRef.current;
+      if (clientY === null || draggingIndexRef.current === null) {
+        stopAutoScroll();
+        return;
+      }
+
+      const SCROLL_ZONE = 100; // 画面端から100px以内をスクロール検知エリアに設定
+      const MAX_SPEED = 14; // 最大スクロール速度(px/frame)
+      const viewportHeight = window.innerHeight;
+      let scrollSpeed = 0;
+
+      if (clientY < SCROLL_ZONE) {
+        // 画面上部: 端に近づくほど速く上にスクロール
+        const ratio = (SCROLL_ZONE - Math.max(0, clientY)) / SCROLL_ZONE;
+        scrollSpeed = -Math.max(2, Math.round(ratio * MAX_SPEED));
+      } else if (clientY > viewportHeight - SCROLL_ZONE) {
+        // 画面下部: 端に近づくほど速く下にスクロール
+        const ratio = (clientY - (viewportHeight - SCROLL_ZONE)) / SCROLL_ZONE;
+        scrollSpeed = Math.max(2, Math.round(ratio * MAX_SPEED));
+      }
+
+      if (scrollSpeed !== 0) {
+        window.scrollBy(0, scrollSpeed);
+
+        // スクロール中、指またはカーソルの下にある要素の位置をリアルタイムに再計算
+        if (clientX !== null) {
+          const element = document.elementFromPoint(clientX, clientY);
+          const cardElement = element?.closest<HTMLElement>('[data-item-index]');
+          if (cardElement) {
+            const targetIndex = Number(cardElement.getAttribute('data-item-index'));
+            if (!isNaN(targetIndex) && targetIndex !== dragOverIndexRef.current) {
+              dragOverIndexRef.current = targetIndex;
+              setDragOverIndex(targetIndex);
+            }
+          }
+        }
+      }
+
+      autoScrollRef.current.animationFrameId = requestAnimationFrame(() => {
+        autoScrollLoopRef.current();
+      });
+    };
+  }, [stopAutoScroll]);
+
+  const updateAutoScroll = useCallback((clientX: number, clientY: number) => {
+    autoScrollRef.current.clientX = clientX;
+    autoScrollRef.current.clientY = clientY;
+
+    if (autoScrollRef.current.animationFrameId === null) {
+      autoScrollRef.current.animationFrameId = requestAnimationFrame(() => {
+        autoScrollLoopRef.current();
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      if (draggingIndexRef.current !== null) {
+        updateAutoScroll(e.clientX, e.clientY);
+      }
+    };
+
+    const handleDragEnd = () => {
+      stopAutoScroll();
+    };
+
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragend', handleDragEnd);
+    window.addEventListener('drop', handleDragEnd);
+
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragend', handleDragEnd);
+      window.removeEventListener('drop', handleDragEnd);
+      stopAutoScroll();
+    };
+  }, [updateAutoScroll, stopAutoScroll]);
 
   const savedOrderRaw = useSyncExternalStore(
     orderStore.subscribe,
@@ -349,6 +451,7 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
+                  stopAutoScroll();
                   const from = draggingIndexRef.current;
                   if (from !== null && from !== index) {
                     reorderItems(from, index);
@@ -397,6 +500,7 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
                           }
                         }}
                         onDragEnd={() => {
+                          stopAutoScroll();
                           draggingIndexRef.current = null;
                           dragOverIndexRef.current = null;
                           setDraggingIndex(null);
@@ -411,6 +515,8 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
                         onTouchMove={(e) => {
                           if (draggingIndexRef.current === null) return;
                           const touch = e.touches[0];
+                          updateAutoScroll(touch.clientX, touch.clientY);
+
                           const element = document.elementFromPoint(
                             touch.clientX,
                             touch.clientY
@@ -432,6 +538,7 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
                           }
                         }}
                         onTouchEnd={() => {
+                          stopAutoScroll();
                           const from = draggingIndexRef.current;
                           const to = dragOverIndexRef.current;
                           if (from !== null && to !== null && from !== to) {
@@ -443,6 +550,7 @@ export default function ShoppingClient({ initialItems }: ShoppingClientProps) {
                           setDragOverIndex(null);
                         }}
                         onTouchCancel={() => {
+                          stopAutoScroll();
                           draggingIndexRef.current = null;
                           dragOverIndexRef.current = null;
                           setDraggingIndex(null);
